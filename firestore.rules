@@ -1,0 +1,254 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(farmerId) {
+      return isSignedIn() && request.auth.uid == farmerId;
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidFarmerProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'name', 'email', 'mobile', 'village', 'district', 'state',
+        'landArea', 'preferredLanguage', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'name', 'email', 'mobile', 'village', 'district', 'state',
+        'landArea', 'preferredLanguage', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.uid)
+      && data.uid == request.auth.uid
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+      && data.mobile is string && data.mobile.size() <= 20
+      && data.village is string && data.village.size() <= 120
+      && data.district is string && data.district.size() <= 80
+      && data.state is string && data.state.size() <= 80
+      && data.landArea is number && data.landArea >= 0 && data.landArea <= 100000
+      && data.preferredLanguage in ['en', 'kn', 'hi', 'ta', 'te', 'mr']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidFarmPlot(data) {
+      return data.keys().hasAll([
+        'ownerId', 'farmName', 'location', 'landArea', 'soilType',
+        'cropsPlanted', 'plantingDate', 'expectedHarvestDate', 'status',
+        'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'ownerId', 'farmName', 'location', 'landArea', 'soilType',
+        'cropsPlanted', 'plantingDate', 'expectedHarvestDate', 'status',
+        'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.ownerId)
+      && data.ownerId == request.auth.uid
+      && data.farmName is string && data.farmName.size() >= 1 && data.farmName.size() <= 100
+      && data.location is string && data.location.size() >= 1 && data.location.size() <= 120
+      && data.landArea is number && data.landArea > 0 && data.landArea <= 100000
+      && data.soilType is string && data.soilType.size() >= 1 && data.soilType.size() <= 80
+      && data.cropsPlanted is string && data.cropsPlanted.size() >= 1 && data.cropsPlanted.size() <= 120
+      && data.plantingDate is string && data.plantingDate.size() >= 4 && data.plantingDate.size() <= 30
+      && data.expectedHarvestDate is string && data.expectedHarvestDate.size() >= 4 && data.expectedHarvestDate.size() <= 30
+      && data.status in ['Growing', 'Ready for Harvest', 'Planted', 'Fallow']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidCropAdvisoryHistory(data) {
+      return data.keys().hasAll([
+        'ownerId', 'nitrogen', 'phosphorus', 'potassium', 'ph',
+        'temperature', 'rainfall', 'location', 'season', 'availableWater',
+        'landSize', 'bestCropName', 'suitabilityScore', 'soilAnalysisNotes', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'ownerId', 'nitrogen', 'phosphorus', 'potassium', 'ph',
+        'temperature', 'rainfall', 'location', 'season', 'availableWater',
+        'landSize', 'bestCropName', 'suitabilityScore', 'soilAnalysisNotes', 'createdAt'
+      ])
+      && isValidId(data.ownerId)
+      && data.ownerId == request.auth.uid
+      && data.nitrogen is number && data.nitrogen >= 0 && data.nitrogen <= 1000
+      && data.phosphorus is number && data.phosphorus >= 0 && data.phosphorus <= 1000
+      && data.potassium is number && data.potassium >= 0 && data.potassium <= 1000
+      && data.ph is number && data.ph >= 0 && data.ph <= 14
+      && data.temperature is number && data.temperature >= -50 && data.temperature <= 70
+      && data.rainfall is number && data.rainfall >= 0 && data.rainfall <= 20000
+      && data.location is string && data.location.size() >= 1 && data.location.size() <= 120
+      && data.season in ['Kharif', 'Rabi', 'Zaid']
+      && data.availableWater in ['High', 'Medium', 'Low']
+      && data.landSize is number && data.landSize >= 0 && data.landSize <= 100000
+      && data.bestCropName is string && data.bestCropName.size() >= 1 && data.bestCropName.size() <= 120
+      && data.suitabilityScore is number && data.suitabilityScore >= 0 && data.suitabilityScore <= 100
+      && data.soilAnalysisNotes is string && data.soilAnalysisNotes.size() <= 500
+      && data.createdAt is timestamp;
+    }
+
+    function isValidAdvisoryLog(data) {
+      return data.keys().hasAll([
+        'ownerId', 'category', 'cropName', 'title', 'summary',
+        'metricLabel', 'language', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'ownerId', 'category', 'cropName', 'title', 'summary',
+        'metricLabel', 'language', 'createdAt'
+      ])
+      && isValidId(data.ownerId)
+      && data.ownerId == request.auth.uid
+      && data.category in ['crop', 'disease', 'irrigation', 'fertilizer', 'voice']
+      && data.cropName is string && data.cropName.size() <= 120
+      && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+      && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 600
+      && data.metricLabel is string && data.metricLabel.size() <= 80
+      && data.language in ['en', 'kn', 'hi', 'ta', 'te', 'mr']
+      && data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /farmers/{farmerId} {
+      allow get: if isOwner(farmerId) && isValidId(farmerId);
+      allow list: if false;
+
+      allow create: if isVerifiedUser()
+        && isOwner(farmerId)
+        && isValidId(farmerId)
+        && isValidFarmerProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isOwner(farmerId)
+        && isValidId(farmerId)
+        && isValidFarmerProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'email', 'mobile', 'village', 'district', 'state',
+          'landArea', 'preferredLanguage', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      match /farms/{farmId} {
+        allow get: if isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(farmId)
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+
+        allow list: if isOwner(farmerId)
+          && existing().ownerId == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(farmId)
+          && isValidFarmPlot(incoming())
+          && incoming().ownerId == farmerId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+
+        allow update: if isVerifiedUser()
+          && isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(farmId)
+          && isValidFarmPlot(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'farmName', 'location', 'landArea', 'soilType', 'cropsPlanted',
+            'plantingDate', 'expectedHarvestDate', 'status', 'updatedAt'
+          ])
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+
+        allow delete: if isVerifiedUser()
+          && isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(farmId)
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+      }
+
+      match /cropHistory/{historyId} {
+        allow get: if isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(historyId)
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+
+        allow list: if isOwner(farmerId)
+          && existing().ownerId == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(historyId)
+          && isValidCropAdvisoryHistory(incoming())
+          && incoming().ownerId == farmerId
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+
+        allow update: if false;
+
+        allow delete: if isVerifiedUser()
+          && isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(historyId)
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+      }
+
+      match /advisoryLogs/{logId} {
+        allow get: if isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(logId)
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+
+        allow list: if isOwner(farmerId)
+          && existing().ownerId == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(logId)
+          && isValidAdvisoryLog(incoming())
+          && incoming().ownerId == farmerId
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+
+        allow update: if false;
+
+        allow delete: if isVerifiedUser()
+          && isOwner(farmerId)
+          && isValidId(farmerId)
+          && isValidId(logId)
+          && exists(/databases/$(database)/documents/farmers/$(farmerId));
+      }
+    }
+  }
+}
